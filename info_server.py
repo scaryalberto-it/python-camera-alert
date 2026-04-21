@@ -1,4 +1,5 @@
 import socket
+import os
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -12,4 +13,16 @@ def get_local_ip():
         s.close()
     return ip
 
-print("IP del telefono:", get_local_ip())
+
+def count_recordings():
+    folder = "recordings"
+
+    if not os.path.exists(folder):
+        return 0
+
+    files = [
+        f for f in os.listdir(folder)
+        if os.path.isfile(os.path.join(folder, f))
+    ]
+
+    return len(files)

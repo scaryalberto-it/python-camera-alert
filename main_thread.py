@@ -1,67 +1,210 @@
+from config import CAMERAS
 import os
 import time
-import asyncio
+import subprocess
 from datetime import datetime
-
+import asyncio
+import threading
+from log_file import write_log
 from telegram_sender import send_video
 
-RECORDINGS_DIR = "recordings"
-CHECK_EVERY_SECONDS = 300       # ogni 5 minuti
-MIN_FILE_AGE_SECONDS = 600      # solo file più vecchi di 10 minuti
+# =========================
+# CONFIG
+# =========================
+OUTPUT_DIR = "recordings"
+
+# Motion detection leggera
+MOTION_WIDTH = 320
+MOTION_HEIGHT = 180
+MOTION_FPS = 2
+
+PIXEL_THRESHOLD = 25
+MIN_CHANGED_PIXELS = 900
+SAMPLE_STEP = 4
+BG_ALPHA = 0.05
+
+# Registrazione
+RECORD_SECONDS = 60
+
+# =========================
+# SETUP
+# =========================
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+FRAME_SIZE = MOTION_WIDTH * MOTION_HEIGHT
 
 
-def is_old_enough(filepath):
+def start_motion_reader(rtsp_url):
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-rtsp_transport", "tcp",
+        "-i", rtsp_url,
+        "-vf", f"fps={MOTION_FPS},scale={MOTION_WIDTH}:{MOTION_HEIGHT},format=gray",
+        "-an",
+        "-sn",
+        "-dn",
+        "-f", "rawvideo",
+        "-pix_fmt", "gray",
+        "-"
+    ]
+
+    return subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=10**7
+    )
+
+
+def read_exact(pipe, size):
+    data = b""
+    while len(data) < size:
+        chunk = pipe.read(size - len(data))
+        if not chunk:
+            return None
+        data += chunk
+    return data
+
+
+def detect_motion(frame_bytes, background):
+    changed = 0
+
+    for i in range(0, FRAME_SIZE, SAMPLE_STEP):
+        cur = frame_bytes[i]
+        bg = background[i]
+
+        if abs(cur - bg) > PIXEL_THRESHOLD:
+            changed += 1
+
+        background[i] = int(bg * (1.0 - BG_ALPHA) + cur * BG_ALPHA)
+
+    return changed >= MIN_CHANGED_PIXELS, changed
+
+
+def start_recording(rtsp_url, camera_name):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(OUTPUT_DIR, f"{camera_name}_{timestamp}.mp4")
+
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-rtsp_transport", "tcp",
+        "-i", rtsp_url,
+        "-t", str(RECORD_SECONDS),
+        "-c", "copy",
+        "-movflags", "+faststart",
+        filename
+    ]
+
+    proc = subprocess.Popen(cmd)
+    print(f"[{camera_name}] Registrazione avviata: {filename}")
+    return proc, filename
+
+
+def stop_process(proc):
+    if proc is None:
+        return
     try:
-        file_mtime = os.path.getmtime(filepath)
-        age_seconds = time.time() - file_mtime
-        return age_seconds >= MIN_FILE_AGE_SECONDS
+        proc.terminate()
+        proc.wait(timeout=5)
     except Exception:
-        return False
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
-def get_old_mp4_files():
-    if not os.path.exists(RECORDINGS_DIR):
-        return []
+def run_camera(camera):
+    camera_name = camera["name"]
+    rtsp_url = camera["url"]
 
-    files = []
+    print(f"[{camera_name}] Sorveglianza avviata.")
 
-    for name in os.listdir(RECORDINGS_DIR):
-        if not name.lower().endswith(".mp4"):
-            continue
+    motion_proc = None
+    record_proc = None
+    background = None
+    last_status_print = 0
+    last_recorded_file = None
 
-        filepath = os.path.join(RECORDINGS_DIR, name)
+    try:
+        motion_proc = start_motion_reader(rtsp_url)
 
-        if not os.path.isfile(filepath):
-            continue
+        while True:
+            if motion_proc.poll() is not None:
+                print(f"[{camera_name}] Reader interrotto. Riavvio...")
+                time.sleep(2)
+                motion_proc = start_motion_reader(rtsp_url)
+                background = None
+                continue
 
-        if not is_old_enough(filepath):
-            continue
+            frame = read_exact(motion_proc.stdout, FRAME_SIZE)
 
-        files.append(filepath)
+            if frame is None:
+                print(f"[{camera_name}] Frame non letto. Riavvio...")
+                stop_process(motion_proc)
+                time.sleep(2)
+                motion_proc = start_motion_reader(rtsp_url)
+                background = None
+                continue
 
-    files.sort(key=os.path.getmtime)
-    return files
+            if background is None:
+                background = bytearray(frame)
+                print(f"[{camera_name}] Background inizializzato.")
+                continue
+
+            motion_detected, changed_pixels = detect_motion(frame, background)
+
+            if record_proc is not None and record_proc.poll() is not None:
+                print(f"[{camera_name}] Registrazione terminata.")
+
+                if last_recorded_file:
+                    asyncio.run(send_video(last_recorded_file))
+
+                record_proc = None
+                last_recorded_file = None
+
+            if motion_detected and record_proc is None:
+                record_proc, last_recorded_file = start_recording(rtsp_url, camera_name)
+
+            now = time.time()
+            if now - last_status_print >= 5:
+                stato = "MOVIMENTO" if motion_detected else "NESSUN MOVIMENTO"
+                rec = " | REC ON" if record_proc is not None else ""
+                ora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                print(f"[{camera_name}] {stato} | pixel_changed={changed_pixels}{rec} | {ora}")
+
+                if motion_detected:
+                    write_log(f"{ora} | [{camera_name}] Movimento rilevato")
+
+                last_status_print = now
+
+    except KeyboardInterrupt:
+        pass
+
+    finally:
+        stop_process(motion_proc)
+        stop_process(record_proc)
 
 
 def main():
-    print("Retry sender avviato.")
-    print("Controllo file vecchi di almeno 10 minuti.\n")
+    print("Sistema multi-camera avviato.\n")
 
-    while True:
-        files = get_old_mp4_files()
+    threads = []
 
-        if files:
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Trovati {len(files)} file da recuperare.")
+    for camera in CAMERAS:
+        t = threading.Thread(target=run_camera, args=(camera,), daemon=True)
+        t.start()
+        threads.append(t)
 
-        for filepath in files:
-            try:
-                print(f"Tento invio: {filepath}")
-                asyncio.run(send_video(filepath))
-                print(f"Inviato con successo: {filepath}")
-            except Exception as e:
-                print(f"Errore invio {filepath}: {e}")
-
-        time.sleep(CHECK_EVERY_SECONDS)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nChiusura in corso...")
 
 
 if __name__ == "__main__":

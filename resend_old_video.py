@@ -43,7 +43,7 @@ def get_old_mp4_files():
     return files
 
 
-def retry_send():
+def main():
     print("Retry sender avviato.")
     print("Controllo file vecchi di almeno 10 minuti.\n")
 
@@ -62,3 +62,7 @@ def retry_send():
                 print(f"Errore invio {filepath}: {e}")
 
         time.sleep(CHECK_EVERY_SECONDS)
+
+
+if __name__ == "__main__":
+    main()

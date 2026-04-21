@@ -7,6 +7,8 @@ from datetime import datetime
 from telegram_sender import send_message
 from config import CAMERAS
 
+from info_server import count_recordings
+
 REPORT_EVERY_SECONDS = 2 * 60 * 60   # 2 ore
 CAMERA_CHECK_EVERY_SECONDS = 300     # 5 minuti
 
@@ -190,7 +192,8 @@ def build_natural_message():
         f"{ram_info}\n"
         f"{disk_info}\n\n"
         f"Connessione:\n{speedtest_info}\n\n"
-        f"{camera_health}"
+        f"{camera_health}\n"
+        f"Numero di file in recordings: {count_recordings()}\n"
     )
 
     return msg
