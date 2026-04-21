@@ -24,7 +24,6 @@ async def send_video(video_path):
             video=f
         )
 
-
 # esempi uso
 async def main():
     #await send_message("Test messaggio")

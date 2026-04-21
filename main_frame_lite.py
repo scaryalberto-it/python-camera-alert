@@ -4,7 +4,7 @@ import time
 import subprocess
 from datetime import datetime
 
-from telegram_sender import send_video_to_telegram
+from telegram_sender import send_video
 
 # =========================
 # CONFIG
@@ -159,7 +159,7 @@ def main():
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Registrazione terminata.")
 
                 if last_recorded_file:
-                    send_video_to_telegram(last_recorded_file)
+                    send_video(last_recorded_file)
 
                 record_proc = None
                 last_recorded_file = None

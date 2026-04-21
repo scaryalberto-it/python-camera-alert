@@ -84,3 +84,5 @@ temp/
 
 # Rimuove il file di configurazione
 config.py
+
+download_all_videos.py
