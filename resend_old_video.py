@@ -6,17 +6,24 @@ from datetime import datetime
 from telegram_sender import send_video
 
 RECORDINGS_DIR = "recordings"
-CHECK_EVERY_SECONDS = 300       # ogni 5 minuti
-MIN_FILE_AGE_SECONDS = 600      # solo file più vecchi di 10 minuti
+CHECK_EVERY_SECONDS = 300
+MIN_FILE_AGE_SECONDS = 600          # 10 minuti
+DELETE_AFTER_SECONDS = 3 * 24 * 60 * 60   # 3 giorni
+
+
+def file_age_seconds(filepath):
+    try:
+        return time.time() - os.path.getmtime(filepath)
+    except Exception:
+        return 0
 
 
 def is_old_enough(filepath):
-    try:
-        file_mtime = os.path.getmtime(filepath)
-        age_seconds = time.time() - file_mtime
-        return age_seconds >= MIN_FILE_AGE_SECONDS
-    except Exception:
-        return False
+    return file_age_seconds(filepath) >= MIN_FILE_AGE_SECONDS
+
+
+def is_too_old(filepath):
+    return file_age_seconds(filepath) >= DELETE_AFTER_SECONDS
 
 
 def get_old_mp4_files():
@@ -34,10 +41,17 @@ def get_old_mp4_files():
         if not os.path.isfile(filepath):
             continue
 
-        if not is_old_enough(filepath):
+        # se troppo vecchio cancella subito
+        if is_too_old(filepath):
+            try:
+                os.remove(filepath)
+                print(f"Cancellato file vecchio: {filepath}")
+            except Exception as e:
+                print(f"Errore cancellazione {filepath}: {e}")
             continue
 
-        files.append(filepath)
+        if is_old_enough(filepath):
+            files.append(filepath)
 
     files.sort(key=os.path.getmtime)
     return files
@@ -45,7 +59,6 @@ def get_old_mp4_files():
 
 def main():
     print("Retry sender avviato.")
-    print("Controllo file vecchi di almeno 10 minuti.\n")
 
     while True:
         files = get_old_mp4_files()

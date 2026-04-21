@@ -175,7 +175,9 @@ def run_camera(camera):
                 rec = " | REC ON" if record_proc is not None else ""
                 ora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                print(f"[{camera_name}] {stato} | pixel_changed={changed_pixels}{rec} | {ora}")
+                # stampa il log nel terminale solo se vede un movimento
+                if stato == "MOVIMENTO":
+                    print(f"[{camera_name}] {stato} | pixel_changed={changed_pixels}{rec} | {ora}")
 
                 if motion_detected:
                     write_log(f"{ora} | [{camera_name}] Movimento rilevato")
