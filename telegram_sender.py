@@ -57,4 +57,4 @@ def comprimi_video(input_path):
     return output_path
 
 # scommentare per testare invio messaggi
-asyncio.run(main())
+#asyncio.run(main())
