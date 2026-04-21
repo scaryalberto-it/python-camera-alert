@@ -3,6 +3,8 @@ import os
 import time
 import subprocess
 from datetime import datetime
+import asyncio
+
 
 from telegram_sender import send_video
 
@@ -159,7 +161,8 @@ def main():
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Registrazione terminata.")
 
                 if last_recorded_file:
-                    send_video(last_recorded_file)
+                    # Chiama la funzione telegram come asincrona
+                    asyncio.run(send_video("recordings/test.mp4"))
 
                 record_proc = None
                 last_recorded_file = None
