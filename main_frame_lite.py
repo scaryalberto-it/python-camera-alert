@@ -162,7 +162,7 @@ def main():
 
                 if last_recorded_file:
                     # Chiama la funzione telegram come asincrona
-                    asyncio.run(send_video("recordings/test.mp4"))
+                    asyncio.run(send_video(last_recorded_file))
 
                 record_proc = None
                 last_recorded_file = None
