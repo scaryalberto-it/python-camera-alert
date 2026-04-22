@@ -1,5 +1,9 @@
 # logger_txt.py
 
+import sys
+import traceback
+from datetime import datetime
+
 from datetime import datetime
 import os
 
@@ -13,3 +17,17 @@ def write_log(message):
 
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{timestamp}] {message}\n")
+
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """
+    funzione che parte all'avvio del sistema
+    :param exc_type:
+    :param exc_value:
+    :param exc_traceback:
+    :return:
+    """
+    errore = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    write_log("ERRORE NON GESTITO:\n" + errore)
+
+sys.excepthook = handle_exception

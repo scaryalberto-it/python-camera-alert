@@ -8,7 +8,7 @@ from telegram_sender import send_video
 RECORDINGS_DIR = "recordings"
 CHECK_EVERY_SECONDS = 300
 MIN_FILE_AGE_SECONDS = 600          # 10 minuti
-DELETE_AFTER_SECONDS = 3 * 24 * 60 * 60   # 3 giorni
+DELETE_AFTER_SECONDS = 3 * 60 * 60  # 3 ore
 
 
 def file_age_seconds(filepath):

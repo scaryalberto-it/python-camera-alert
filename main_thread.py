@@ -171,13 +171,16 @@ def run_camera(camera):
 
             now = time.time()
             if now - last_status_print >= 5:
-                stato = "MOVIMENTO" if motion_detected else "NESSUN MOVIMENTO"
+
+                # Registra il buon funzionamento dei thread
+                hearth_beat()
+
+                stato = "MOVIMENTO" if motion_detected else "nessun movimento"
                 rec = " | REC ON" if record_proc is not None else ""
                 ora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 # stampa il log nel terminale solo se vede un movimento
-                if stato == "MOVIMENTO":
-                    print(f"[{camera_name}] {stato} | pixel_changed={changed_pixels}{rec} | {ora}")
+                print(f"[{camera_name}] {stato} | pixel_changed={changed_pixels}{rec} | {ora}")
 
                 if motion_detected:
                     write_log(f"{ora} | [{camera_name}] Movimento rilevato")
@@ -208,6 +211,11 @@ def main():
     except KeyboardInterrupt:
         print("\nChiusura in corso...")
 
+
+def hearth_beat():
+    with open("heartbeat.txt", "a", encoding="utf-8") as f:
+        testo = f"Alive: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f.write(testo)
 
 if __name__ == "__main__":
     main()
