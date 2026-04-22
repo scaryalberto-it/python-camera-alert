@@ -16,22 +16,23 @@ async def send_message(text):
 async def send_video(video_path):
     bot = Bot(token=BOT_TOKEN)
 
-    compressed_path = comprimi_video(video_path)
+    try:
+        compressed_path = comprimi_video(video_path)
 
-    with open(compressed_path, "rb") as f:
-        await bot.send_video(
-            chat_id=CHAT_ID,
-            video=f
-        )
+        with open(compressed_path, "rb") as f:
+            await bot.send_video(
+                chat_id=CHAT_ID,
+                video=f
+            )
 
-    # cancella file originale
-    if os.path.exists(video_path):
-        os.remove(video_path)
+        if os.path.exists(video_path):
+            os.remove(video_path)
 
-    # cancella file compresso
-    if os.path.exists(compressed_path):
-        os.remove(compressed_path)
+        if os.path.exists(compressed_path):
+            os.remove(compressed_path)
 
+    except Exception as e:
+        print(f"Errore invio {video_path}: {e}")
         
 # esempi uso
 async def main():
