@@ -3,11 +3,8 @@ import os
 import time
 import subprocess
 from datetime import datetime
-import asyncio
 import threading
 from log_file import write_log
-from telegram_sender import send_video
-
 
 # =========================
 # CONFIG
@@ -192,7 +189,9 @@ def run_camera(camera):
 
             now = time.time()
             if now - last_status_print >= 5:
-                hearth_beat()
+
+                # Segna i batti per verificare se il sistema è "vivo", scrivedno anche quela camera
+                hearth_beat(camera_name)
 
                 stato = "MOVIMENTO" if motion_detected else "nessun movimento"
                 rec = " | REC ON" if record_proc is not None else ""
@@ -230,9 +229,9 @@ def main():
         print("\nChiusura in corso...")
 
 
-def hearth_beat():
+def hearth_beat(cam):
     with open("heartbeat.txt", "a", encoding="utf-8") as f:
-        testo = f"Alive: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        testo = f"{cam}__Alive: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         f.write(testo)
 
 

@@ -9,8 +9,8 @@ import asyncio
 HEARTBEAT_FILE = "heartbeat.txt"
 TARGET_SCRIPT = "main.py"
 
-CHECK_EVERY_SECONDS = 1800   # 30 minuti
-MAX_AGE_SECONDS = 1800       # 30 minuti
+CHECK_EVERY_SECONDS = 300   # 5 minuti
+MAX_AGE_SECONDS = 600       # 10 minuti
 
 
 def log(msg):
@@ -38,36 +38,6 @@ def kill_main_tree(proc):
         log(f"{TARGET_SCRIPT} già terminato")
 
 
-def heartbeat_too_old():
-    if not os.path.exists(HEARTBEAT_FILE):
-        log("heartbeat.txt non trovato")
-        return True
-
-    try:
-        with open(HEARTBEAT_FILE, "r", encoding="utf-8") as f:
-            righe = f.readlines()
-
-        if not righe:
-            log("heartbeat vuoto")
-            os.remove(HEARTBEAT_FILE)
-            return True
-
-        ultima_riga = righe[-1].strip()
-        # formato: Alive: 2026-04-22 12:30:00
-        data_txt = ultima_riga.replace("Alive: ", "")
-        dt = datetime.strptime(data_txt, "%Y-%m-%d %H:%M:%S")
-
-        age = (datetime.now() - dt).total_seconds()
-        log(f"Età heartbeat: {int(age)} secondi")
-
-        os.remove(HEARTBEAT_FILE)
-
-        return age > MAX_AGE_SECONDS
-
-    except Exception as e:
-        log(f"Errore heartbeat: {e}")
-        return True
-
 def main():
     log("Watchdog avviato")
     proc = start_main()
@@ -80,16 +50,64 @@ def main():
             proc = start_main()
             continue
 
-        # Se non vengono letti battiti da 30 minuti, manda un messaggio su telegram e riavvia tutto
-        if heartbeat_too_old():
+        # Se non vengono letti battiti da 30 minuti o una camera non è raggingibile da 10, manda un messaggio su telegram e riavvia tutto
+        if cameras_down():
             log("Heartbeat troppo vecchio. Riavvio tutto...")
             asyncio.run(send_message("Watchdog: heartbeat non rilevato o troppo vecchio. Riavvio main.py"))
             kill_main_tree(proc)
             time.sleep(3)
             proc = start_main()
+
         else:
             log("Heartbeat OK")
 
+from config import CAMERAS
+from datetime import datetime
+import os
+
+def cameras_down():
+    file_name = "heartbeat.txt"
+
+    if not os.path.exists(file_name):
+        return True
+
+    try:
+        with open(file_name, "r", encoding="utf-8") as f:
+            righe = f.readlines()
+
+        if not righe:
+            return True
+
+        ultimi_log = {}
+
+        for riga in righe:
+            riga = riga.strip()
+
+            if "__" not in riga:
+                continue
+
+            nome_cam, ts = riga.split("__", 1)
+
+            ts = ts.replace("Alive: ", "").strip()
+
+            ultimi_log[nome_cam] = ts
+
+        for camera in CAMERAS:
+            nome = camera["name"]
+
+            if nome not in ultimi_log:
+                return True
+
+            dt = datetime.strptime(ultimi_log[nome], "%Y-%m-%d %H:%M:%S")
+            age = (datetime.now() - dt).total_seconds()
+
+            if age > 600:
+                return True
+
+        return False
+
+    except:
+        return True
 
 if __name__ == "__main__":
     main()
