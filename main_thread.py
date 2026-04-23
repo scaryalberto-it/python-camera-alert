@@ -8,6 +8,7 @@ import threading
 from log_file import write_log
 from telegram_sender import send_video
 
+
 # =========================
 # CONFIG
 # =========================
@@ -25,6 +26,7 @@ BG_ALPHA = 0.05
 
 # Registrazione
 RECORD_SECONDS = 60
+RECORD_TIMEOUT_GRACE = 15   # tolleranza extra prima di forzare la chiusura
 
 # =========================
 # SETUP
@@ -89,11 +91,13 @@ def start_recording(rtsp_url, camera_name):
 
     cmd = [
         "ffmpeg",
+        "-y",
         "-hide_banner",
         "-loglevel", "error",
         "-rtsp_transport", "tcp",
         "-i", rtsp_url,
         "-t", str(RECORD_SECONDS),
+        "-an",
         "-c", "copy",
         "-movflags", "+faststart",
         filename
@@ -107,12 +111,14 @@ def start_recording(rtsp_url, camera_name):
 def stop_process(proc):
     if proc is None:
         return
+
     try:
         proc.terminate()
         proc.wait(timeout=5)
     except Exception:
         try:
             proc.kill()
+            proc.wait(timeout=2)
         except Exception:
             pass
 
@@ -125,6 +131,7 @@ def run_camera(camera):
 
     motion_proc = None
     record_proc = None
+    record_start_time = None
     background = None
     last_status_print = 0
     last_recorded_file = None
@@ -157,29 +164,40 @@ def run_camera(camera):
 
             motion_detected, changed_pixels = detect_motion(frame, background)
 
+            # Registrazione finita normalmente
             if record_proc is not None and record_proc.poll() is not None:
                 print(f"[{camera_name}] Registrazione terminata.")
 
-                if last_recorded_file:
-                    asyncio.run(send_video(last_recorded_file))
+                # if last_recorded_file:
+                #     asyncio.run(send_video(last_recorded_file))
 
                 record_proc = None
+                record_start_time = None
                 last_recorded_file = None
 
+            # Registrazione bloccata: forzo chiusura
+            if record_proc is not None and record_start_time is not None:
+                elapsed = time.time() - record_start_time
+                if elapsed > (RECORD_SECONDS + RECORD_TIMEOUT_GRACE):
+                    print(f"[{camera_name}] Registrazione bloccata da {int(elapsed)} secondi. Forzo chiusura.")
+                    stop_process(record_proc)
+                    record_proc = None
+                    record_start_time = None
+                    last_recorded_file = None
+
+            # Avvio nuova registrazione solo se non ce n'è una già attiva
             if motion_detected and record_proc is None:
                 record_proc, last_recorded_file = start_recording(rtsp_url, camera_name)
+                record_start_time = time.time()
 
             now = time.time()
             if now - last_status_print >= 5:
-
-                # Registra il buon funzionamento dei thread
                 hearth_beat()
 
                 stato = "MOVIMENTO" if motion_detected else "nessun movimento"
                 rec = " | REC ON" if record_proc is not None else ""
                 ora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                # stampa il log nel terminale solo se vede un movimento
                 print(f"[{camera_name}] {stato} | pixel_changed={changed_pixels}{rec} | {ora}")
 
                 if motion_detected:
@@ -216,6 +234,7 @@ def hearth_beat():
     with open("heartbeat.txt", "a", encoding="utf-8") as f:
         testo = f"Alive: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         f.write(testo)
+
 
 if __name__ == "__main__":
     main()
